@@ -1,0 +1,35 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(gateway_boundary, "API Gateway Layer") {
+  System(kong, "Kong API Gateway", "Nginx-based\nJWT Auth\nRate Limiting\nRequest Transformation", "Единая точка входа для всех клиентов")
+
+  System_Boundary(client_types, "Типы клиентов") {
+    System(mobile_app, "Мобильное приложение", "iOS/Android", "Основной клиентский интерфейс")
+    System(web_banking, "Веб-банкинг", "SPA", "Полноценный веб-интерфейс")
+    System(merchants, "Внешние мерчанты", "API Consumers", "Интеграция с платежами")
+  }
+
+  System_Boundary(services, "Микросервисы") {
+    System(payments, "Payments Service", "Java, Spring Boot", "Обработка платежей")
+    System(wallet, "Wallet Service", "Java, Spring Boot", "Управление кошельками")
+    System(fraud, "Anti-Fraud Service", "Python", "Проверка рисков")
+    System(notifications, "Notifications Service", "Java, Spring Boot", "Уведомления")
+    System(customer, "Customer Service", "Java, Spring Boot", "Управление клиентами")
+  }
+}
+
+' Подключение клиентов к Gateway
+Rel(mobile_app, kong, "HTTPS (REST)\nJWT Auth", "Primary")
+Rel(web_banking, kong, "HTTPS (REST)\nJWT Auth", "Primary")
+Rel(merchants, kong, "HTTPS (REST)\nAPI Key", "Primary")
+
+' Маршрутизация от Gateway к сервисам
+Rel(kong, merchants, "Internal REST\nАутентифицированный", "Merchant API")
+Rel(kong, payments, "Internal REST\nАутентифицированный", "Payments API")
+Rel(kong, wallet, "Internal REST\nАутентифицированный", "Wallet API")
+Rel(kong, fraud, "Internal gRPC\nАутентифицированный", "Fraud API")
+Rel(kong, notifications, "Internal REST\nАутентифицированный", "Notifications API")
+Rel(kong, customer, "Internal REST\nАутентифицированный", "Customer API")
+
+@enduml

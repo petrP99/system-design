@@ -1,0 +1,38 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(merchant_context, "Merchant/Callbacks Context") {
+  Container(callbacks_service, "Callbacks Service", "Java, Spring Boot", "Управление коллбэками\nМерчанты")
+  ContainerDb(callbacks_db, "Callbacks DB", "PostgreSQL", "Хранение эндпоинтов и попыток")
+  Container(kafka, "Kafka", "Kafka", "События платежей\n(payment.*)")
+
+  Container_Boundary(internal, "Внутренние компоненты") {
+    Container(orchestrator, "Callback Orchestrator", "Java", "Управление отправкой коллбэков")
+    Container(registry, "Merchant Registry", "Java", "Регистрация мерчантов")
+    Container(retry, "Retry Manager", "Java", "Стратегии повторных отправок")
+  }
+}
+
+Rel(callbacks_service, callbacks_db, "JDBC\nСинхронная", "Primary")
+Rel(callbacks_service, kafka, "payment.completed\nKafka\nАсинхронная")
+Rel(callbacks_service, orchestrator, "Внутренний вызов", "Синхронная")
+Rel(callbacks_service, registry, "Внутренний вызов", "Синхронная")
+Rel(callbacks_service, retry, "Внутренний вызов", "Синхронная")
+
+note right of callbacks_service
+  <b>Ключевые особенности:</b>
+  — Идемпотентность через UUIDv7
+  — Поддержка множества форматов
+  — Повторные отправки при ошибках
+  — Рейт-лимитинг на запросы
+end note
+
+note as N1
+  <b>Параметры коллбэков:</b>
+  — Таймаут: 5 секунд
+  — Макс. попыток: 5
+  — Экспоненциальная задержка
+  — Версионирование API
+end note
+N1 -[hidden]d- retry
+@enduml

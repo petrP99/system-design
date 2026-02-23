@@ -1,0 +1,24 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(core_context, "Core Banking Context") {
+  System(core_system, "Core Banking System", "Java, Spring Boot")
+  System_Ext(kafka, "Kafka", "Kafka", "События для core")
+
+
+  Container_Boundary(internal, "Внутренние компоненты") {
+    Container(engine, "Product Engine", "Java 1.0", "Продукты")
+    Container(accounting, "Accounting", "Java 1.0", "Бухгалтерский учет")
+    ContainerDb_Ext(core_db, "Core banking DB", "Oracle")
+
+  }
+}
+
+Rel(core_system, engine, "Внутренний вызов", "Синхронный")
+Rel(core_system, accounting, "Внутренний вызов", "Синхронный")
+Rel(engine, core_db, "Внутренний вызов", "Синхронный")
+Rel(accounting, core_db, "Внутренний вызов", "Синхронный")
+Rel(kafka, core_system, "События для core", "Асинхронный")
+
+
+@enduml
