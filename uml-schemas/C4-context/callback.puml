@@ -4,7 +4,7 @@
 System_Boundary(merchant_context, "Merchant/Callbacks Context") {
   Container(callbacks_service, "Callbacks Service", "Java, Spring Boot", "Управление коллбэками\nМерчанты")
   ContainerDb(callbacks_db, "Callbacks DB", "PostgreSQL", "Хранение эндпоинтов и попыток")
-  Container(kafka, "Kafka", "Kafka", "События платежей\n(payment.*)")
+  Container(kafka, "Kafka", "Kafka", "События платежей")
 
   Container_Boundary(internal, "Внутренние компоненты") {
     Container(orchestrator, "Callback Orchestrator", "Java", "Управление отправкой коллбэков")
@@ -13,26 +13,11 @@ System_Boundary(merchant_context, "Merchant/Callbacks Context") {
   }
 }
 
-Rel(callbacks_service, callbacks_db, "JDBC\nСинхронная", "Primary")
-Rel(callbacks_service, kafka, "payment.completed\nKafka\nАсинхронная")
-Rel(callbacks_service, orchestrator, "Внутренний вызов", "Синхронная")
-Rel(callbacks_service, registry, "Внутренний вызов", "Синхронная")
-Rel(callbacks_service, retry, "Внутренний вызов", "Синхронная")
+Rel(callbacks_service, callbacks_db, "Синхронный", "JDBC")
+Rel(callbacks_service, kafka, "Асинхронный")
+Rel(callbacks_service, orchestrator, "Внутренний вызов", "Синхронный")
+Rel(callbacks_service, registry, "Внутренний вызов", "Синхронный")
+Rel(callbacks_service, retry, "Внутренний вызов", "Синхронный")
 
-note right of callbacks_service
-  <b>Ключевые особенности:</b>
-  — Идемпотентность через UUIDv7
-  — Поддержка множества форматов
-  — Повторные отправки при ошибках
-  — Рейт-лимитинг на запросы
-end note
 
-note as N1
-  <b>Параметры коллбэков:</b>
-  — Таймаут: 5 секунд
-  — Макс. попыток: 5
-  — Экспоненциальная задержка
-  — Версионирование API
-end note
-N1 -[hidden]d- retry
 @enduml

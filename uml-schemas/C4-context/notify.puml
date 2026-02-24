@@ -3,20 +3,23 @@
 
 System_Boundary(notifications_context, "Notifications Context") {
   System(notifications_service, "Notifications Service", "Java, Spring Boot", "Управление уведомлениями\nШаблоны")
-  ContainerDb_Ext(notifications_db, "Notifications DB", "Cassandra", "Хранение шаблонов и статусов")
-  System_Ext(kafka, "Kafka", "Kafka", "События для критичных уведомлений")
 
   Container_Boundary(internal, "Внутренние компоненты") {
     Container(dispatcher, "Notification Dispatcher", "Java", "Маршрутизация уведомлений")
     Container(templates, "Template Manager", "Java", "Управление шаблонами")
     Container(channels, "Channel Adapters", "Java", "Интеграция с провайдерами")
+    ContainerDb(notifications_db, "Notifications DB", "Cassandra", "Хранение шаблонов и статусов")
   }
 }
 
+System_Ext(kafka, "Kafka", "Kafka", "События для критичных уведомлений")
+Person_Ext(customer, "Клиент", "Пользователь мобильного/веб-банка")
+
+Rel_U(notifications_service, customer, "Уведомления\n(SMS/Push/Email")
 Rel(notifications_service, notifications_db, "JDBC\nСинхронный")
 Rel(notifications_service, dispatcher, "Внутренний вызов", "Синхронный")
 Rel(notifications_service, templates, "Внутренний вызов", "Синхронный")
 Rel(notifications_service, channels, "Внутренний вызов", "Синхронный")
-Rel(kafka, notifications_service, "События платежей\nKafka\nАсинхронный")
+Rel(kafka, notifications_service, "События платежей", "Асинхронный")
 
 @enduml

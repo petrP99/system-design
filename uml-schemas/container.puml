@@ -2,6 +2,7 @@
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
 Person(customer, "Клиент", "Пользователь мобильного/веб-банка")
+System_Ext(merchant, "Merchant", "Внешний продавец/сервис")
 
 System_Boundary(system, "Платёжный платформа") {
   System(kong, "Kong API Gateway", "Nginx, JWT Auth, Rate Limiting", "Аутентификация, маршрутизация, рейт-лимитинг")
@@ -31,6 +32,11 @@ System_Boundary(system, "Платёжный платформа") {
     System(core_banking, "Core Banking (Legacy)", "Java Legacy", "Бухгалтерский учёт")
   }
 
+   System_Boundary(callbacks_boundary, "Callbacks Context") {
+     Container(callbacks, "Callbacks Service", "Spring Boot", "Управление коллбэками мерчантам")
+     ContainerDb(callbacks_db, "Callbacks DB", "PostgreSQL", "Хранение эндпоинтов и попыток")
+   }
+
   Container(kafka, "Kafka", "Kafka", "Событийная шина\n(payment.*)")
 }
 
@@ -48,6 +54,7 @@ Rel(outbox_worker, kafka, "payment.created\n(Kafka)\nАсинхронный")
 Rel(kafka, wallet, "payment.created\n(Kafka)\nАсинхронный")
 Rel(kafka, adapter, "payment.posted\n(Kafka)\nАсинхронный\n(Anti-Corruption Layer)")
 Rel(kafka, notifications, "payment.completed\n(Kafka)\nАсинхронный\n(Published Language)")
+Rel(kafka, callbacks, "payment.completed\npayment.failed\n(Kafka)\nАсинхронный\n(Published Language)")
 
 ' Обработка ошибок
 Rel_R(kafka, wallet, "payment.error\n(Kafka)\nАсинхронный", "Error Flow")
@@ -57,8 +64,9 @@ Rel(kafka, adapter, "payment.error\n(Kafka)\nАсинхронный", "Error Flo
 Rel(adapter, core_banking, "REST\nСинхронный\n(преобразованный запрос)", "Legacy Integration")
 
 ' Дополнительные связи
-Rel(wallet, wallet_db, "JDBC\nСинхронный")
+Rel(wallet, wallet_db, "JDBC")
 Rel(notifications, customer, "SMS/Push/Email\nАсинхронный", "User Notification")
-
+Rel_R(callbacks, merchant, "Merchant Notification", "REST")
+Rel(callbacks, callbacks_db, "JDBC")
 
 @enduml
