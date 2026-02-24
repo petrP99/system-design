@@ -1,0 +1,72 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(customer, "Клиент", "Пользователь мобильного/веб-банка")
+System_Ext(merchant, "Merchant", "Внешний продавец/сервис")
+
+System_Boundary(system, "Платёжный платформа") {
+  System(kong, "Kong API Gateway", "Nginx, JWT Auth, Rate Limiting", "Аутентификация, маршрутизация, рейт-лимитинг")
+
+  System_Boundary(payments_boundary, "Payments Context") {
+    Container(payments, "Payments Service", "Spring Boot", "Оркестрация платежей")
+    ContainerDb(payments_db, "Payments DB", "PostgreSQL", "Хранение платежей\n(статусы, outbox)")
+    Container(outbox_worker, "Outbox Worker", "Scheduler", "Отправка событий из outbox в Kafka")
+  }
+
+  System_Boundary(wallet_boundary, "Wallet Context") {
+    Container(wallet, "Wallet Service", "Spring Boot", "Управление кошельками\nБлокировки, балансы")
+    ContainerDb(wallet_db, "Wallet DB", "PostgreSQL", "Хранение балансов и блокировок")
+  }
+
+  System_Boundary(fraud_boundary, "Anti-Fraud Context") {
+    Container(fraud, "Anti-Fraud Service", "Kotlin", "Онлайн-проверка\nСкоринг рисков")
+    ContainerDb(fraud_db, "Fraud Model DB", "Cassandra", "Хранение скоринговых моделей")
+  }
+
+  System_Boundary(notifications_boundary, "Notifications Context") {
+    Container(notifications, "Notifications Service", "Spring Boot", "Управление уведомлениями")
+  }
+
+  System_Boundary(integration, "Интеграция с Legacy") {
+    Container(adapter, "Core Integration (ACL)", "Spring Boot", "Anti-Corruption Layer\nПреобразование Kafka → Legacy")
+    System(core_banking, "Core Banking (Legacy)", "Java Legacy", "Бухгалтерский учёт")
+  }
+
+   System_Boundary(callbacks_boundary, "Callbacks Context") {
+     Container(callbacks, "Callbacks Service", "Spring Boot", "Управление коллбэками мерчантам")
+     ContainerDb(callbacks_db, "Callbacks DB", "PostgreSQL", "Хранение эндпоинтов и попыток")
+   }
+
+  Container(kafka, "Kafka", "Kafka", "Событийная шина\n(payment.*)")
+}
+
+Rel(customer, kong, "HTTPS (REST)\nСинхронный")
+Rel(kong, payments, "HTTPS (REST)\nСинхронный")
+
+' Синхронные связи внутри Payments
+Rel(payments, wallet, "gRPC\nСинхронный\n(Customer/Supplier)\n(блокировка средств)", "Critical")
+Rel(payments, fraud, "gRPC\nСинхронный\n(Customer/Supplier)\n(проверка риска)", "Critical")
+Rel(payments, payments_db, "JDBC\nСинхронный")
+Rel(payments, outbox_worker, "Запись в outbox\nСинхронный")
+
+' Асинхронные связи через Kafka
+Rel(outbox_worker, kafka, "payment.created\n(Kafka)\nАсинхронный")
+Rel(kafka, wallet, "payment.created\n(Kafka)\nАсинхронный")
+Rel(kafka, adapter, "payment.posted\n(Kafka)\nАсинхронный\n(Anti-Corruption Layer)")
+Rel(kafka, notifications, "payment.completed\n(Kafka)\nАсинхронный\n(Published Language)")
+Rel(kafka, callbacks, "payment.completed\npayment.failed\n(Kafka)\nАсинхронный\n(Published Language)")
+
+' Обработка ошибок
+Rel_R(kafka, wallet, "payment.error\n(Kafka)\nАсинхронный", "Error Flow")
+Rel(kafka, adapter, "payment.error\n(Kafka)\nАсинхронный", "Error Flow")
+
+' Интеграция с Core Banking
+Rel(adapter, core_banking, "REST\nСинхронный\n(преобразованный запрос)", "Legacy Integration")
+
+' Дополнительные связи
+Rel(wallet, wallet_db, "JDBC")
+Rel(notifications, customer, "SMS/Push/Email\nАсинхронный", "User Notification")
+Rel_R(callbacks, merchant, "Merchant Notification", "REST")
+Rel(callbacks, callbacks_db, "JDBC")
+
+@enduml
