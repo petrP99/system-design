@@ -1,0 +1,23 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(wallet_context, "Wallet Context") {
+  System(wallet_service, "Wallet Service", "Java, Spring Boot", "Управление кошельками\nБалансы\nБлокировки")
+
+  Container_Boundary(internal, "Внутренние компоненты") {
+    Container(balance, "Balance Calculator", "Java", "Расчет доступного баланса")
+    Container(audit, "Audit Logger", "Java", "Логирование операций")
+    ContainerDb(wallet_db, "Wallet DB", "PostgreSQL", "Хранение балансов и блокировок")
+  }
+}
+
+System_Ext(payment, "Payments")
+Container_Ext(kafka, "Kafka", "Kafka")
+
+Rel(payment, wallet_service, "Синхронный", "gRPC")
+Rel(wallet_service, wallet_db, "Синхронный", "JDBC")
+Rel_R(wallet_service, kafka, "payment.completed", Асинхронный")
+Rel(wallet_service, balance, "Внутренний вызов", "Синхронный")
+Rel(wallet_service, audit, "Внутренний вызов", "Синхронный")
+
+@enduml
