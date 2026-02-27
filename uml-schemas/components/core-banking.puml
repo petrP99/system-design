@@ -5,10 +5,10 @@ System_Boundary(core_context, "Core Banking Context") {
   System_Ext(adapter, "ACL Service-Adapter", "Адаптированный запрос для core legacy")
 
   Container_Boundary(internal, "Внутренние компоненты") {
-    System(core_system, "Core Banking System", "Java, Spring Boot")
+    Container(core_system, "Core Banking System", "Java, Spring Boot")
     Container(engine, "Product Engine", "Java 1.0", "Продукты")
     Container(accounting, "Accounting", "Java 1.0", "Бухгалтерский учет")
-    ContainerDb_Ext(core_db, "Core banking DB", "Oracle")
+    ContainerDb(core_db, "Core banking DB", "Oracle")
   }
 }
 
@@ -16,6 +16,6 @@ Rel(core_system, engine, "Внутренний вызов", "Синхронны�
 Rel(core_system, accounting, "Внутренний вызов", "Синхронный")
 Rel(engine, core_db, "Внутренний вызов", "JDBC")
 Rel(accounting, core_db, "Внутренний вызов", "JDBC")
-Rel(adapter, core_system, "Запрос для core legacy", "REST/SOAP")
+Rel(adapter, core_system, "Запрос для core legacy", "SOAP")
 
 @enduml

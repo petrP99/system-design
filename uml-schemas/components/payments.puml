@@ -1,0 +1,19 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(payments_context, "Payments Context") {
+  Container(payments_service, "Payments Service", "Java, Spring Boot", "Оркестрация платежей")
+  Container(orchestrator, "Payment Orchestrator", "Java", "Управление жизненным циклом платежа")
+  Container(outbox, "Outbox Worker", "Java", "Отправка событий из outbox в Kafka")
+  ContainerDb(payments_db, "Payments DB", "PostgreSQL", "Хранение платежей")
+}
+
+Container_Ext(kafka, "Kafka", "Kafka", "События платежей")
+
+Rel(orchestrator, payments_db, "Синхронный", "Сохранение платежа + Запись в Outbox")
+Rel_R(payments_service, kafka, "payment.completed\npayment.failed", "Асинхронный")
+Rel(payments_service, orchestrator, "Внутренний вызов", "Синхронный")
+Rel(outbox, payments_db, "Внутренний вызов", "jbdc")
+Rel(outbox, kafka, "payment.created", "Асинхронный")
+
+@enduml

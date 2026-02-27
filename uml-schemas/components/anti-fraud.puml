@@ -1,0 +1,18 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Container_Ext(payments, "Payments Service", "Java, Spring Boot", "Оркестрация платежей")
+
+Container_Boundary(internal, "Внутренние компоненты") {
+  Container(fraud_service, "Anti-Fraud Service", "Kotlin", "Онлайн-проверка\nСкоринг рисков")
+  Container(engine, "Fraud Engine", "Kotlin", "Ядро проверки")
+  Container(scoring, "Scoring Engine", "Kotlin", "Процесс присвоения баллов")
+  ContainerDb(fraud_db, "Fraud Model DB", "Cassandra")
+}
+
+Rel(fraud_service, fraud_db, "cql")
+Rel(fraud_service, engine, "Внутренний вызов", "Синхронный")
+Rel(fraud_service, scoring, "Внутренний вызов", "Синхронный")
+Rel(payments, fraud_service, "Синхронный", "gRPC")
+
+@enduml

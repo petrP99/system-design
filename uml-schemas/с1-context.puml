@@ -1,0 +1,13 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+Person("client", "Клиент", "Пользователь мобильного/веб-банка")
+System("bank_platform", "Платёжная платформа банка", "Обработка платежей, управление кошельками, проверка мошенничества")
+System_Ext("card_processing", "Карточный процессинг (Visa/Mastercard)", "Обработка карточных платежей")
+System_Ext("merchants", "Мерчанты", "Внешние продавцы")
+
+Rel("client", "bank_platform", "HTTPS (REST)\nСинхронная", "Primary")
+Rel("bank_platform", "card_processing", "HTTPS (REST)\nСинхронный")
+Rel("bank_platform", "merchants", "Webhook\nАсинхронная")
+
+@enduml

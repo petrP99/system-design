@@ -1,0 +1,25 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(gateway_boundary, "API Gateway Layer") {
+  System(kong, "Kong API Gateway", "Nginx-based\nJWT Auth\nRate Limiting\nRequest Transformation", "Единая точка входа для всех клиентов")
+  System_Boundary(services, "Микросервисы") {
+    Container(payments, "Payments Service", "Java, Spring Boot", "Обработка платежей")
+    Container(wallet, "Wallet Service", "Java, Spring Boot", "Управление кошельками")
+  }
+}
+
+System_Boundary(client_types, "Типы клиентов") {
+  System_Ext(mobile_app, "Мобильное приложение", "iOS/Android", "Основной клиентский интерфейс")
+  System_Ext(web_banking, "Веб-банкинг", "SPA", "Полноценный веб-интерфейс")
+}
+
+' Подключение клиентов к Gateway
+Rel(mobile_app, kong, "HTTPS (REST)\nJWT Auth", "Primary")
+Rel(web_banking, kong, "HTTPS (REST)\nJWT Auth", "Primary")
+
+' Маршрутизация от Gateway к сервисам
+Rel(kong, payments, "Internal REST\nАутентифицированный", "Payments API")
+Rel(kong, wallet, "Internal REST\nАутентифицированный", "Wallet API")
+
+@enduml
