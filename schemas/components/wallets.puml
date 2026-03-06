@@ -1,0 +1,31 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(wallet_svc_boundary, "Сервис кошельков (Wallet Service)") {
+    Container(grpc_controller, "Слой команд", "gRPC Server", "Прием команд от Оркестратора (reserve, confirm, release)")
+    Container(wallet_manager, "Доменный менеджер", "Spring Service", "Логика балансов, проверка лимитов и идемпотентность")
+    Container(outbox_layer, "Слой Outbox", "JPA/Hibernate", "Атомарная запись события в таблицу wallet_outbox")
+    ContainerDb(wallet_db, "БД кошельков", "PostgreSQL", "Таблицы: wallets, wallet_transactions, wallet_outbox")
+}
+
+' Внешние сущности
+System_Ext(orch, "Оркестратор", "Координатор саги")
+System_Ext(kafka, "Kafka", "Событийная шина")
+Container(debezium, "Wallet Outbox Worker", "Debezium", "CDC чтение логов БД и публикация в Kafka")
+
+' Связи управления
+Rel(orch, grpc_controller, "Команды: reserve, confirm, release", "gRPC")
+
+' Внутренние вызовы
+Rel(grpc_controller, wallet_manager, "Вызов бизнес-логики")
+
+' Работа с данными
+Rel(wallet_manager, wallet_db, "Обновление баланса и проверка ID платежа", "JDBC")
+Rel(wallet_manager, outbox_layer, "Регистрация события")
+Rel(outbox_layer, wallet_db, "Запись в wallet_outbox", "JDBC/ACID")
+
+' Поток Debezium
+Rel_R(debezium, wallet_db, "Стриминг изменений (WAL)", "Binary Log")
+Rel(debezium, kafka, "Публикация: payment.initiated", "Async")
+
+@enduml

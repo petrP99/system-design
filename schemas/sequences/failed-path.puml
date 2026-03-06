@@ -1,0 +1,32 @@
+@startuml
+autonumber
+skinparam Style strictuml
+
+participant "Orchestrator" as Orch
+participant "Transaction Service" as TX
+participant "Provider" as Provider
+participant "Kafka" as Kafka
+participant "Wallet Service" as Wallet
+database "Wallet DB" as WDB
+participant "Query Service" as Query
+
+Note over Orch: Средства уже зарезервированы (Шаг 1 пройден)
+
+Orch -> TX: gRPC: processPayment()
+TX -> Provider: gRPC: processPayment()
+Provider --> TX: 400 Bad Request / Decline
+TX -> TX: Update Tech Status = FAILED
+TX -> Kafka: Publish: payment.result (FAILED)
+
+par Обработка отказа (Saga Compensation)
+    Kafka -> Orch: Consume: payment.result (FAILED)
+    Orch -> Wallet: gRPC: releaseFunds() (Компенсация)
+    activate Wallet
+        Wallet -> WDB: Transaction { Unreserve balance & Insert Outbox }
+        Wallet --> Orch: 200 OK
+    deactivate Wallet
+
+    Kafka -> Query: Consume: payment.result (FAILED)
+    Query -> Query: ClickHouse: Update Status = CANCELLED
+end
+@enduml

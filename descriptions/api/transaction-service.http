@@ -1,0 +1,9 @@
+PUT /api/v1/transactions/{paymentId}/result
+Content-Type: application/json
+
+{
+  "result": "SUCCESS|FAILED",
+  "providerTxnId": "prov-123456",
+  "errorCode": "string",  // optional
+  "errorMessage": "string"  // optional
+}

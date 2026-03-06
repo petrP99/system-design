@@ -1,92 +1,83 @@
-# Сценарии платежной системы
+# description.md
 
-## Успешный платеж ([пример ответа](..\responses\paymentCompleted.json))
-1. **Клиент** отправляет синхронный REST запрос через **Kong API Gateway** в **Payments Service**.
-2. **Payments Service**:
-    * Проверяет данные платежа.
-    * Отправляет синхронный gRPC запрос в **Wallet Service** для резервирования средств.
-    * Отправляет синхронный gRPC запрос в **Anti-Fraud Service** для проверки риска.
-    * Сохраняет платеж в статусе `IN_PROGRESS` в **Payments DB**.
-    * Отправляет клиенту "Платеж принят, обрабатывается".
-    * Добавляет запись в таблицу **outbox**.
-3. **Outbox Worker**:
-    * Обнаруживает новую запись в outbox.
-    * Публикует событие `payment.created` в **Kafka**.
-4. **Wallet Service**:
-    * Подписывается на события `payment.created`.
-    * Проверяет наличие резервирования.
-    * Списывает средства (уменьшает `total_balance`, удаляет `reserved_amount`).
-    * Публикует событие `payment.completed` в **Kafka**.
-5. **Payments Service**:
-    * Получает событие `payments.completed` в Kafka.
-    * Обновляет статус платежа на `COMPLETED`.
-6. **Core Integration (ACL)**:
-    * Подписывается на события `payment.completed`.
-    * Преобразует событие в формат Core Banking (`json` -> `xml`).
-    * Отправляет синхронный SOAP запрос в **Core Banking**.
-7. **Notifications Service**:
-    * Подписывается на события `payment.completed`.
-    * Формирует уведомление.
-    * Доставляет уведомление через SMS/email провайдеры клиенту.
-8. **Callbacks Service**:
-    * Подписывается на события `payment.completed`.
-    * Отправляет Webhook в **Merchant**.
+# Архитектура платежной системы (Saga Orchestration & CQRS)
+
+Данный документ описывает целевую архитектуру системы обработки платежей с использованием паттернов **Saga (Оркестрация)**,
+**Transactional Outbox (Debezium)** и **CQRS (ClickHouse)**.
 
 ---
 
-## Неуспешный платеж
-1. **Клиент** отправляет синхронный REST запрос через **Kong API Gateway** в **Payments Service**.
-2. **Payments Service**:
-    * Проверяет данные платежа.
-    * Отправляет синхронный gRPC запрос в **Wallet Service** для резервирования средств.
-    * Отправляет синхронный gRPC запрос в **Anti-Fraud Service** для проверки риска.
-    * **Если недостаточно средств или обнаружено мошенничество**:
-        * Сохраняет платеж в статусе `FAILED` в **Payments DB**.
-        * Публикует событие `payment.failed` в **Kafka**.
+## 1. Общее описание сценариев
+
+### 1.1 [Успешный платеж](../schemas/sequences/happy-path.puml)
+1. **Клиент** отправляет запрос через **Kong API Gateway** в **Orchestrator**.
+2. **Orchestrator** вызывает синхронный gRPC запрос в **Wallet Service** (`reserveFunds`).
 3. **Wallet Service**:
-    * Читает сообщение из `payment.failed` в Kafka.
-    * **Если находит резерв суммы по payment_id**:
-        * Увеличивает `available_balance`, Удаляет `reserved_amount`.
-        * Не изменяет `total_balance`.
-4. **Notifications Service**:
-    * Подписывается на события `payment.failed`.
-    * Формирует уведомление об ошибке.
-    * Доставляет уведомление клиенту об ошибке.
-5. **Callbacks Service**:
-    * Подписывается на события `payment.failed`.
-    * Отправляет Webhook в **Merchant**.
+   * Проверяет баланс и резервирует средства (`available` -> `reserved`).
+   * Атомарно обновляет баланс и пишет событие `PaymentInitiated`в таблицу **wallet_outbox**.
+   * Возвращает Orchestrator-у ответ "Принято".
+4. **Debezium (CDC)** считывает лог **Wallet DB** и публикует `payment.initiated` в **Kafka**.
+5. **Transaction Service** получает событие из Kafka, сохраняет тех. запись (`PENDING`) и инициирует запрос к **Внешнему провайдеру**.
+6. **Callback Service** принимает Webhook от провайдера, валидирует его и через HTTPS уведомляет **Transaction Service**.
+7. **Transaction Service** обновляет тех. статус на `SUCCESS` и через свой **Outbox (Debezium)** шлет `payment.result` в Kafka.
+8. **Orchestrator** получает `SUCCESS` и вызывает `Wallet.confirmFunds` для финального списания.
+9. **Payment Query Service** слушает все события и обновляет проекцию в **ClickHouse**.
+
+### 1.2 [Неуспешный платеж (Компенсация)](../schemas/sequences/failed-path.puml)
+1. Если **Transaction Service** фиксирует отказ провайдера или таймаут, он публикует `payment.result (FAILED)`.
+2. **Orchestrator**, получив отказ, запускает шаг компенсации: вызывает `Wallet.releaseFunds`.
+3. **Wallet Service** возвращает резерв на доступный баланс и обновляет статус транзакции на `CANCELLED`.
+4. **Query Service** фиксирует финальное состояние ошибки в read-модели.
 
 ---
 
-## Ключевые отношения
+### 1.3 Примеры сообщений kafka-events:
+* [payment-initiated](kafka-events/paymentInitiated.json)
+* [payment-completed](kafka-events/paymentCompleted.json)
+* [payment-failed](kafka-events/paymentFailed.json)
+* [provider-callback](kafka-events/providerCallback.json)
 
-### Кратко:
-* **Payments → Wallet**: Customer/Supplier (gRPC)
-* **Payments → Anti-Fraud**: Customer/Supplier (gRPC)
-* **Payments → Core Banking**: Anti-Corruption Layer (Kafka + REST)
-* **Payments → Callbacks**: Published Language (Kafka)
-* **Payments → Notifications**: Published Language (Kafka)
+## 2. Технические решения и паттерны
 
-### Подробно:
-* **Payments -> Wallet: Customer/Supplier (gRPC)**
-  Проверка баланса - это критическая операция с высокими требованиями к задержкам (latency). gRPC быстрее сериализуется и поддерживает постоянное HTTP/2 соединение, что снизит нагрузку на сеть между критичными микросервисами.
-* **Payments -> Anti-Fraud: Customer/Supplier (gRPC)**
-  Синхронная проверка перед списанием средств (блокирующая операция).
-* **Payments -> Kafka -> ACL Service Adapter -> Core Banking: Anti-Corruption Layer (Kafka + SOAP)**
-  Изоляция от legacy через kafka + адаптер, преобразующий события в формат Core Banking Legacy. Прослойка на Spring Boot может трансформировать события из Kafka в требуемые для Legacy форматы (json->xml).
-* **Payments -> Notifications: Published Language (Kafka)**
-  Асинхронные события для уведомлений.
-* **Kafka -> Callbacks -> Merchant (REST)**
-  Отвечает за отправку уведомлений внешним мерчантам о статусе платежей. После завершения платежа (успешного или неуспешного) система должна уведомить мерчанта, чтобы он мог:
-    * Завершить процесс продажи
-    * Обновить статус заказа
-    * Предоставить товар/услугу
-    * Обработать ошибки
+*   **Оркестрация**: Централизованное управление жизненным циклом платежа через **Orchestrator**.
+*   **Transactional Outbox (CDC)**: Использование **Debezium** для гарантированной доставки событий из БД в Kafka без потери данных при сбоях приложения.
+*   **Идемпотентность**: Проверка по `payment_id` (UUIDv7) на уровне Unique Constraint в Wallet и Transaction DB.
+*   **CQRS**: Полное разделение Write-модели (PostgreSQL) и Read-модели (**ClickHouse**). Чтение истории и статусов не нагружает транзакционные сервисы.
 
 ---
 
-## Брокер
+## 3. Спецификация API контрактов
 
-Была выбрана **Kafka**. Используется как шина событий: сервис кошелька, уведомлений и бухгалтерский мс (через адаптер) подписываются на события транзакции.
+### 3.1 Внешние API
+* **[Orchestrator](api/orchestrator-bff.http)**:
+* * [POST] `/v1/payments`**: Инициация платежа. Принимает `amount`, `target_account`, `idempotency_key`.
+* * [GET]`/v1/payments/{payment_id}`**: Получение статуса из Query Service.
 
-Также используется в паттерне **Transactional Outbox** (сообщение о платеже сначала попадает в БД платежей, а затем в Kafka). Если Core Banking недоступен, сообщение будет лежать в очереди, пока Адаптер не сможет его успешно передать. Данные не теряются.
+### 3.2 Внутренние API (gRPC)
+* **[Wallet Service](api/wallet.http)**:
+   * `reserveFunds(payment_id, user_id, amount)` — Блокировка средств.
+   * `confirmFunds(payment_id)` — Финальное списание.
+   * `releaseFunds(payment_id)` — Отмена резерва (Компенсация).
+* **[Transaction Service](api/transaction-service.http)**:
+   * `processPayment(payment_id, provider_id, amount)` — Вызов провайдера.
+* **[Callback](api/callback.http)**:
+   * `updateProviderStatus(payment_id, status)` — Прием данных от  Service.
+
+---
+
+## 4. [Схема данных (ERD)](../schemas/erd/db-diagram.mmd)
+
+### Wallet DB (PostgreSQL)
+* **wallets**: `id`, `user_id`, `available_balance`, `reserved_balance`.
+* **wallet_transactions**: `payment_id` (PK), `wallet_id`, `amount`, `status`.
+* **wallet_outbox**: `id`, `event_type`, `payload`.
+
+### Transaction DB (PostgreSQL)
+* **payments**: `payment_id` (PK), `external_ref`, `tech_status`, `updated_at`.
+* **tx_outbox**: `id`, `event_type`, `payload`.
+
+### Read DB (ClickHouse)
+* **payment_view**: `payment_id`, `user_id`, `amount`, `status`, `provider_status`, `created_at`.
+
+---
+

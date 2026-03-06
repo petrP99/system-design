@@ -1,0 +1,11 @@
+POST /api/v1/callbacks/payment-result
+Content-Type: application/json
+
+{
+  "providerTxnId": "prov-123456",
+  "paymentId": "uuid-v7",
+  "result": "SUCCESS|FAILED",
+  "timestamp": "2026-02-25T1410.456Z",
+  "signature": "base64-encoded-signature"
+}
+

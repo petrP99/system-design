@@ -1,0 +1,18 @@
+{
+  "eventId": "uuid-v7",
+  "eventType": "PaymentFailed",
+  "version": "1.0.0",
+  "occurredAt": "2026-02-25T14:31:10.456Z",
+  "source": "transaction-service",
+  "correlationId": "payment-uuid-v7",
+  "data": {
+    "paymentId": "uuid-v7",
+    "userId": "uuid-v7",
+    "amount": 1000.00,
+    "currency": "RUB",
+    "providerId": "VISA",
+    "errorCode": "INSUFFICIENT_FUNDS",
+    "errorMessage": "Недостаточно средств на карте получателя",
+    "failedAt": "2026-02-25T14:31:10.456Z"
+  }
+}

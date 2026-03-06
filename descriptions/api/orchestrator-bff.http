@@ -1,0 +1,17 @@
+POST /api/v1/payments
+Content-Type: application/json
+
+{
+  "paymentId": "uuid-v7",
+  "userId": "uuid-v7",
+  "amount": 1000.00,
+  "currency": "RUB",
+  "recipient": {
+    "type": "external_account",
+    "identifier": "card_number"
+  },
+  "description": "Оплата товаров"
+}
+
+###
+GET /api/v1/payments/{paymentId}
