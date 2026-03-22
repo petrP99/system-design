@@ -4,6 +4,6 @@ Content-Type: application/json
 {
   "result": "SUCCESS|FAILED",
   "providerTxnId": "prov-123456",
-  "errorCode": "string",  // optional
-  "errorMessage": "string"  // optional
+  "errorCode": "string",
+  "errorMessage": "string"
 }
