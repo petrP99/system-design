@@ -1,0 +1,69 @@
+    @startuml
+    autonumber
+    skinparam Style strictuml
+
+    actor Customer
+    participant "Orchestrator" as Orch
+    participant "Wallet Service" as Wallet
+    database "Wallet DB" as WDB
+    participant "Outbox Worker" as Worker
+    participant "Kafka" as Kafka
+    participant "Transaction Service" as TX
+    database "Transaction DB" as TXDB
+    participant "Provider" as Provider
+    participant "Callback Service" as CB
+    participant "Query Service" as Query
+
+    Customer -> Orch: POST /v1/payments (amount, target)
+    Orch -> Wallet: gRPC reserveFunds(userId, amount, paymentId)
+    activate Wallet
+        Wallet -> WDB: [Transaction Start]
+        Wallet -> WDB: Update balance (reserve)
+        Wallet -> WDB: Insert into Outbox (PaymentInitiated)
+        Wallet -> WDB: [Transaction Commit]
+        Wallet --> Orch: 200 OK (Accepted)
+    deactivate Wallet
+
+    Orch --> Customer: 202 Accepted (paymentId)
+
+    == Инициация платежа (Outbox Wallet) ==
+
+    Worker -> WDB: Read Outbox (PaymentInitiated)
+    Worker -> Kafka: Publish "PaymentInitiated"
+
+    par Parallel Processing
+        Kafka -> TX: Consume "PaymentInitiated"
+        activate TX
+            TX -> TXDB: [Transaction Start]
+            TX -> TXDB: Save Tech Record (Status: PENDING)
+            TX -> TXDB: [Transaction Commit]
+            TX -> Provider: POST /pay (external_id=paymentId)
+        deactivate TX
+
+        Kafka -> Query: Consume "PaymentInitiated"
+        Query -> Query: Update Read-Model (Status: PENDING)
+    end
+
+    == Обработка Callback и Transaction Outbox ==
+
+    Provider --[#blue]> CB: HTTP Webhook (Status: SUCCESS, provider_tx_id)
+    CB -> TX: gRPC notifyResult(paymentId, SUCCESS)
+    activate TX
+        TX -> TXDB: [Transaction Start]
+        TX -> TXDB: Update Status = SUCCESS
+        TX -> TXDB: Insert Outbox (PaymentResult: SUCCESS)
+        TX -> TXDB: [Transaction Commit]
+    deactivate TX
+
+    TX -> Kafka: Publish "PaymentResult: SUCCESS"
+
+    == Финализация ==
+
+    Kafka -> Orch: Consume "PaymentResult: SUCCESS"
+    Orch -> Wallet: gRPC confirmFunds(paymentId)
+    Wallet -> WDB: Commit Reserve (status = COMPLETED)
+
+    Kafka -> Query: Consume "PaymentResult: SUCCESS"
+    Query -> Query: Update Read-Model (Status: SUCCESS)
+
+    @enduml

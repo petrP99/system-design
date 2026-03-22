@@ -1,0 +1,40 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(tx_svc_boundary, "Сервис транзакций (Transaction Service)") {
+    Container(initiated_handler, "Слой обработки инициации", "Kafka Consumer", "Подписка на payment.initiated для запуска платежа + подписка на ProviderCallbackReceived")
+    Container(callback_api, "Callback-интерфейс", "gRPC Server", "Прием уведомлений от Callback Service")
+    Container(provider_integrator, "Интеграция с провайдером", "gRPC Client", "Вызов внешнего API провайдера и идемпотентность")
+    Container(tx_manager, "Менеджер транзакций", "Spring Service", "Управление тех. статусами и бизнес-логикой шага")
+    Container(outbox_layer, "Слой Outbox", "JPA/Hibernate", "Запись PaymentResult в таблицу tx_outbox")
+    ContainerDb(tx_db, "БД транзакций", "PostgreSQL", "Таблицы: payments, provider_refs, tx_outbox")
+}
+
+' Внешние сущности из C2
+System_Ext(provider, "Внешний Провайдер", "Платежный шлюз")
+System_Ext(kafka, "Kafka", "Событийная шина")
+Container(callback_svc, "Callback Service", "Spring Boot", "Адаптер внешних вебхуков")
+Container(debezium_tx, "Transaction Outbox Worker", "Debezium", "CDC публикация PaymentResult")
+
+' Потоки управления
+Rel(kafka, initiated_handler, "Событие payment.initiated\nProviderCallbackReceived", "Async")
+Rel(callback_svc, kafka, "ProviderCallbackReceived", "Async")
+
+
+' Внутренняя логика
+Rel(initiated_handler, tx_manager, "Запуск процесса")
+Rel(callback_api, tx_manager, "Обновление статуса")
+
+Rel(tx_manager, provider_integrator, "Запрос к провайдеру")
+Rel(provider_integrator, provider, "Платежная операция", "gRPC")
+
+' Работа с данными
+Rel(tx_manager, tx_db, "Сохранение тех. статуса", "JDBC")
+Rel(tx_manager, outbox_layer, "Регистрация итога")
+Rel(outbox_layer, tx_db, "Запись в tx_outbox", "JDBC/ACID")
+
+' Поток Debezium
+Rel_R(debezium_tx, tx_db, "Чтение WAL (tx_outbox)", "Binary Log")
+Rel(debezium_tx, kafka, "Публикация: payment.result", "Async")
+
+@enduml

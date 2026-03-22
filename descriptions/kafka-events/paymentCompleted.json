@@ -1,0 +1,17 @@
+{
+  "eventId": "uuid-v7",
+  "eventType": "PaymentCompleted",
+  "version": "1.0.0",
+  "occurredAt": "2026-02-25T14:30:45.123Z",
+  "source": "wallet-service",
+  "correlationId": "payment-uuid-v7",
+  "data": {
+    "paymentId": "uuid-v7",
+    "userId": "uuid-v7",
+    "walletId": "uuid-v7",
+    "amount": 1000.00,
+    "currency": "RUB",
+    "providerId": "VISA",
+    "description": "Оплата товаров"
+  }
+}

@@ -1,0 +1,29 @@
+POST /api/v1/wallets/reserve
+Content-Type: application/json
+
+{
+  "userId": "uuid-v7",
+  "paymentId": "uuid-v7",
+  "amount": 1000.00,
+  "currency": "RUB",
+  "requestId": "uuid-v7"
+}
+###
+POST /api/v1/wallets/commit
+Content-Type: application/json
+
+{
+  "paymentId": "uuid-v7",
+  "requestId": "uuid-v7"
+}
+
+###
+POST /api/v1/wallets/release
+Content-Type: application/json
+
+{
+  "paymentId": "uuid-v7",
+  "reason": "PROVIDER_REJECTED",
+  "requestId": "uuid-v7"
+}
+

@@ -1,0 +1,59 @@
+erDiagram
+%% --- WALLET SERVICE DB (PostgreSQL) ---
+    WALLETS ||--o{ WALLET_TRANSACTIONS : "содержит"
+    WALLETS {
+        uuid id PK
+        uuid user_id "Владелец счета"
+        decimal available_balance
+        decimal reserved_balance
+        varchar currency
+        timestamp updated_at
+    }
+
+    WALLET_TRANSACTIONS {
+        uuid payment_id PK "Идемпотентность"
+        uuid wallet_id FK "Ссылка на кошелек"
+        decimal amount
+        enum status "RESERVED, COMPLETED, CANCELLED"
+        timestamp created_at
+    }
+
+    WALLET_OUTBOX {
+        bigserial id PK
+        varchar event_type "PaymentInitiated"
+        jsonb payload
+        timestamp created_at
+    }
+
+%% --- TRANSACTION SERVICE DB (PostgreSQL) ---
+    TRANSACTIONS {
+        uuid payment_id PK "Идемпотентность"
+        varchar provider_id
+        varchar provider_tx_id "ID во внешней системе"
+        varchar tech_status "PENDING, SUCCESS, FAILED"
+        decimal amount
+        timestamp updated_at
+    }
+
+    TRANSACTION_OUTBOX {
+        bigserial id PK
+        varchar event_type "PaymentResult"
+        jsonb payload
+        timestamp created_at
+    }
+
+%% --- QUERY SERVICE DB (ClickHouse) ---
+    PAYMENT_VIEW {
+        uuid payment_id PK "OrderBy Key"
+        uuid user_id "Ссылка на пользователя"
+        uuid wallet_id "Ссылка на кошелек"
+        decimal amount
+        enum8 status "SUCCESS, FAILED, CANCELLED, etc"
+        string provider_status
+        string merchant_info
+        datetime created_at
+    }
+
+%% Логические связи по Global ID
+    WALLET_TRANSACTIONS ||--|| TRANSACTIONS : "payment_id"
+    TRANSACTIONS ||--|| PAYMENT_VIEW : "проекция данных"

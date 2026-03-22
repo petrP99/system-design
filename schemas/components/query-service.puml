@@ -1,0 +1,24 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+System_Boundary(query_svc_boundary, "Сервис запросов (Payment Query Service)") {
+    Container(event_subscriber, "Подписчик событий", "Kafka Consumer", "Слушает payment.initiated, payment.result, callback.received")
+    Container(projection_builder, "Построитель проекций", "Spring Service", "Денормализация данных и подготовка батчей для вставки")
+    Container(query_api, "Query API", "gRPC Server", "Обработка запросов истории и статусов от Оркестратора")
+    ContainerDb(clickhouse, "Read DB (ClickHouse)", "OLAP / Columnar", "Денормализованные таблицы: payment_view, analytics_report")
+}
+
+' Внешние сущности из C2
+System_Ext(orch, "Оркестратор / BFF", "Координатор и шлюз")
+System_Ext(kafka, "Kafka", "Событийная шина")
+
+' Потоки данных (Write Path)
+Rel(kafka, event_subscriber, "События Payment*", "Async")
+Rel(event_subscriber, projection_builder, "Передача сырых данных")
+Rel(projection_builder, clickhouse, "Вставка/Обновление строк", "Native/HTTP")
+
+' Потоки запросов (Read Path)
+Rel(orch, query_api, "Запрос статуса/истории", "gRPC")
+Rel(query_api, clickhouse, "Выборка (SELECT)", "SQL")
+
+@enduml

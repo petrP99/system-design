@@ -1,0 +1,64 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(customer, "Клиент", "Пользователь мобильного/веб-банка")
+System_Ext(provider, "Внешний Провайдер", "Платежный шлюз")
+
+System_Boundary(system, "Платёжная платформа") {
+  Container(kong, "Kong API Gateway", "JWT, Rate Limiting, LB", "Аутентификация и маршрутизация")
+  Container(orch, "Orchestrator / BFF", "Spring Boot", "Прием запросов, агрегация данных")
+  Container(callback_service, "Callback Service", "Spring Boot", "Прием и валидация входящих уведомлений")
+
+  System_Boundary(payment_boundary, "Payment Context") {
+    Container(query_service, "Payment Query Service", "Spring Boot", "Read-модель (CQRS)")
+    ContainerDb(read_db, "Read DB", "ClickHouse", "Проекции для чтения")
+  }
+
+  System_Boundary(wallet_boundary, "Wallet Context (Write)") {
+    Container(wallet, "Wallet Service", "Spring Boot", "Балансы, резервирование, компенсации")
+    ContainerDb(wallet_db, "Wallet DB", "PostgreSQL", "Транзакции кошельков, outbox")
+    Container(wallet_outbox, "Wallet Outbox Worker", "Debezium", "Публикация PaymentInitiated")
+  }
+
+  System_Boundary(tx_boundary, "Transaction Context") {
+    Container(tx_service, "Transaction Service", "Spring Boot", "Тех. статусы, логика провайдера")
+    Container(tx_outbox, "Transaction Outbox Worker", "Debezium", "Публикация PaymentResult")
+    ContainerDb(tx_db, "Transaction DB", "PostgreSQL", "Технические записи платежей")
+  }
+
+  System_Boundary(Kafka_cont, "Событийная шина") {
+    Container(kafka, "Kafka", "Kafka", "События: PaymentInitiated, PaymentResult")
+  }
+}
+
+Rel(customer, kong, "API запросы", "REST")
+Rel(kong, orch, "Запрос платежа", "REST")
+Rel(orch, wallet, "Создание платежа / release / confirm", "gRPC")
+Rel(orch, tx_service, "processPayment", "gRPC")
+Rel(orch, query_service, "Запрос статуса/истории", "gRPC")
+
+' Wallet
+Rel(wallet, wallet_db, "ACID транзакция", "JDBC")
+Rel(wallet_outbox, wallet_db, "Чтение outbox")
+Rel(wallet_outbox, kafka, "PaymentInitiated", "Async")
+
+' Transaction
+Rel_L(tx_service, provider, "Запрос платежа", "gRPC")
+Rel(kafka, tx_service, "PaymentInitiated", "Async")
+Rel(tx_service, tx_db, "Сохранение тех. статуса", "JDBC")
+Rel(tx_outbox, tx_db, "Чтение outbox", "JDBC")
+Rel(tx_outbox, kafka, "PaymentResult", "Async")
+
+' Callback
+Rel_R(provider, kong, "Webhook", "HTTPS")
+Rel(kong, callback_service, "Webhook", "HTTPS")
+Rel(callback_service, tx_service, "notifyResult", "gRPC")
+
+' Response
+Rel(kafka, orch, "Consume PaymentResult", "Async")
+
+' CQRS Read-model
+Rel(kafka, query_service, "Слушает события Payment*", "Async")
+Rel(query_service, read_db, "Обновление проекций", "JDBC")
+
+@enduml
